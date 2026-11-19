@@ -1,0 +1,63 @@
+name: trillion
+
+# 대상 서비스: 정상 클라이언트 -> nginx -> app -> db
+# 에이전트와 Zoro-1은 호스트에서 돌고, logs/ 아래 기록을 읽는다.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: shop
+    volumes:
+      - ./services/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shop"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  app:
+    build: ./services
+    command: python app.py
+    environment:
+      DATABASE_URL: postgres://postgres:demo@db:5432/shop
+    depends_on:
+      db:
+        condition: service_healthy
+    stop_grace_period: 3s
+
+  standby:   # 예비 앱: 주 앱과 같은 이미지, 같은 DB. 평소에는 사용자 트래픽을 받지 않는다
+    build: ./services
+    command: python app.py
+    environment:
+      DATABASE_URL: postgres://postgres:demo@db:5432/shop
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8081:8000"   # 에이전트가 예비 앱에 직접 보내는 점검 요청용
+    stop_grace_period: 3s
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/dynamic:/etc/nginx/dynamic:ro
+      - ./logs/nginx:/var/log/nginx
+    ports:
+      - "127.0.0.1:8080:80"   # 테스트 서비스는 이 컴퓨터 안에서만 연다 (에이전트의 응답 확인용)
+    depends_on:
+      - app
+
+  client:   # 정상 사용자 모사: 두 경로를 일정 속도로 호출하고 요청별 결과를 기록
+    build: ./services
+    command: python client.py
+    deploy:
+      replicas: 4   # 출발지 4곳. 한 곳이 평소 전체의 1/4쯤을 차지한다
+    environment:
+      TARGET: http://nginx
+    volumes:
+      - ./logs/client:/logs
+    depends_on:
+      - nginx
+    stop_grace_period: 1s

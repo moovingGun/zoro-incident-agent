@@ -1,0 +1,32 @@
+{"t": 1795091012.026346, "inject": "reset"}
+{"t": 1795091036.6599538, "inject": "orders_fault"}
+{"t": 1795091101.863771, "inject": "reset"}
+{"t": 1795091121.0569332, "inject": "db_delay", "ms": 3000}
+{"t": 1795091190.77147, "inject": "reset"}
+{"t": 1795091203.983781, "inject": "app_down"}
+{"t": 1795091230.537802, "inject": "orders_fault"}
+{"t": 1795091285.5206358, "inject": "reset"}
+{"t": 1795091293.585952, "inject": "db_delay", "ms": 3000}
+{"t": 1795091333.5760121, "inject": "reset"}
+{"t": 1795091345.618397, "inject": "orders_fault"}
+{"t": 1795091368.206646, "inject": "reset"}
+{"t": 1795091380.263815, "inject": "orders_fault"}
+{"t": 1795091429.47214, "inject": "reset"}
+{"t": 1795091441.526489, "inject": "orders_fault"}
+{"t": 1795091468.138471, "inject": "reset"}
+{"t": 1795091543.441477, "inject": "reset"}
+{"t": 1795091562.819884, "inject": "orders_fault"}
+{"t": 1795091614.927707, "inject": "reset"}
+{"t": 1795091627.001598, "inject": "orders_fault"}
+{"t": 1795091657.755847, "inject": "reset"}
+{"t": 1795091669.798524, "inject": "orders_fault"}
+{"t": 1795091727.0729542, "inject": "reset"}
+{"t": 1795091905.7570078, "inject": "reset"}
+{"t": 1795091925.0945249, "inject": "orders_fault"}
+{"t": 1795091968.993145, "inject": "reset"}
+{"t": 1795091981.028959, "inject": "orders_fault"}
+{"t": 1795092002.710721, "inject": "reset"}
+{"t": 1795092069.52827, "inject": "db_delay", "ms": 3000}
+{"t": 1795092088.0832691, "inject": "reset"}
+{"t": 1795092104.295734, "inject": "app_down"}
+{"t": 1795092115.7714, "inject": "reset"}

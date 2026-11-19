@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장애 대응 에이전트</title>
+<style>
+  :root {
+    --page: #f3f2ee; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --line: #e1e0d9;
+    --good: #0ca30c; --good-text: #006300; --serious: #ec835a; --critical: #d03b3b; --critical-text: #a82020;
+    --band: rgba(11, 11, 11, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #111110; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781; --line: #2c2c2a;
+      --good-text: #0ca30c; --critical-text: #ec6a6a; --band: rgba(240, 239, 236, .08);
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont,
+         "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+  main { max-width: 1060px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 18px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  .sub { color: var(--ink2); font-size: 13px; margin: 0 0 12px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .mode { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--ink2); margin-bottom: 14px; }
+  .badge { border: 1.5px solid var(--ink); color: var(--ink); border-radius: 999px; padding: 2px 10px; font-weight: 700; font-size: 13px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .seg button { font: inherit; border: 0; background: none; color: var(--ink2); padding: 8px 18px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); font-weight: 700; }
+  .seg.small button { padding: 5px 12px; font-size: 13px; }
+  .picker { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 14px; }
+  .picker .what { color: var(--ink2); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .alert { border: 1.5px solid var(--critical); border-radius: 10px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px; }
+  .notice { border: 1.5px solid var(--serious); border-left-width: 6px; }
+  .notice b { font-size: 15px; }
+  .waiting td { vertical-align: middle; }
+  .waiting button { font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: 5px 14px; cursor: pointer; background: var(--critical); color: #fff; }
+
+  /* 결론 */
+  .outcome { border-left: 6px solid var(--muted); }
+  .outcome.resolved { border-left-color: var(--good); }
+  .outcome.escalated { border-left-color: var(--critical); }
+  .outcome .head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .outcome .verdict { font-size: 22px; font-weight: 800; }
+  .outcome.resolved .verdict { color: var(--good-text); }
+  .outcome.escalated .verdict { color: var(--critical-text); }
+  .outcome .when { color: var(--ink2); }
+  .outcome p { margin: 6px 0 0; color: var(--ink2); }
+  .why { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .why > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .why .k { font-size: 12px; color: var(--muted); }
+  .why .t { font-weight: 700; margin: 2px 0 4px; }
+  .why .d { font-size: 13px; color: var(--ink2); }
+  .scope { margin-top: 10px; font-size: 13px; color: var(--ink2); }
+  .ack { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--ink2); }
+  .ack button { font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: 8px 18px; cursor: pointer;
+                background: var(--critical); color: #fff; }
+  .ack.done { color: var(--good-text); font-weight: 700; font-size: 14px; }
+
+  /* 단계 */
+  .steps { display: grid; gap: 8px; margin-bottom: 14px; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; transition: opacity .15s; }
+  .step.later { opacity: .35; }
+  .step .n { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--ink); align-items: center;
+             justify-content: center; font-size: 12px; font-weight: 700; margin-right: 6px; }
+  .step .l { font-weight: 700; font-size: 14px; }
+  .step .s { font-size: 24px; font-weight: 800; margin-top: 2px; }
+  .step .s small { font-size: 13px; font-weight: 600; color: var(--ink2); }
+  .step .d { font-size: 12px; color: var(--ink2); margin-top: 2px; }
+
+  /* 요청 기록 */
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }
+  .bar button { font: inherit; border: 1px solid var(--ink); background: var(--ink); color: var(--surface); border-radius: 8px;
+                padding: 5px 14px; cursor: pointer; font-weight: 700; min-width: 76px; }
+  .bar input[type=range] { flex: 1; min-width: 180px; accent-color: var(--ink); }
+  .bar .now { min-width: 150px; color: var(--ink2); font-size: 13px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink2); margin-bottom: 4px; }
+  .legend i { display: inline-block; width: 18px; height: 6px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+  .scroll { overflow-x: auto; }
+  svg { display: block; width: 100%; min-width: 720px; height: auto; }
+  svg text { fill: var(--ink2); font-size: 12px; font-family: inherit; }
+  svg .lane-name { fill: var(--ink); font-weight: 700; font-size: 13px; }
+  svg .grid { stroke: var(--line); stroke-width: 1; }
+  svg .mark { stroke: var(--ink); stroke-width: 1.5; }
+  svg .inject { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  svg .cursor { stroke: var(--ink); stroke-width: 1; opacity: .5; }
+  svg .req.success { fill: var(--good); } svg .req.failed { fill: var(--critical); } svg .req.timeout { fill: var(--serious); }
+  svg .req.flying { fill: var(--muted); }
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--surface); border-radius: 6px; padding: 4px 8px;
+         font-size: 12px; display: none; z-index: 10; white-space: nowrap; }
+
+  /* 표 */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 600; color: var(--ink2); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .state { font-weight: 700; white-space: nowrap; }
+  .state.ok { color: var(--good-text); } .state.bad { color: var(--critical-text); }
+  .rate { font-size: 18px; font-weight: 800; }
+  .dim { color: var(--ink2); }
+  .logbox { max-height: 300px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .logbox tr.later { opacity: .3; }
+  .logbox tr.key td { background: var(--band); }
+  .p { display: inline-block; width: 90px; height: 8px; border-radius: 4px; background: var(--band); position: relative; vertical-align: middle; margin-right: 6px; }
+  .p b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--ink2); }
+  .p u { position: absolute; left: 70%; top: -3px; bottom: -3px; width: 1.5px; background: var(--ink); }
+  .trail { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; font-size: 13px; }
+  .trail span { border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  .trail span b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .trail em { color: var(--muted); font-style: normal; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  @media (max-width: 760px) { .why { grid-template-columns: 1fr; } .steps { grid-template-columns: repeat(2, 1fr) !important; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>장애 대응 에이전트</h1>
+    <div class="seg small" id="modeSeg" role="group" aria-label="화면 종류" hidden>
+      <button type="button" data-m="replay">기록 재생</button><button type="button" data-m="live">실시간</button>
+    </div>
+  </div>
+  <div class="mode"><span class="badge" id="badge">기록 재생</span><span id="modeNote"></span></div>
+  <div class="alert" id="alert" hidden></div>
+
+  <div class="picker" id="pickerRow">
+    <div class="seg" id="picker" role="group" aria-label="사건 선택"></div>
+    <span class="what" id="what"></span>
+  </div>
+
+  <section class="card notice" id="faults" aria-live="assertive" hidden></section>
+  <section class="card outcome" id="outcome" aria-live="polite"></section>
+  <section class="card waiting" id="waiting" hidden></section>
+  <section class="steps" id="steps"></section>
+  <p class="sub" id="basis"></p>
+
+  <section class="card" id="nextCard" hidden>
+    <h2>다음 단계 선택</h2>
+    <p class="sub">재시작 후에도 미복구이면 바로 이관하지 않습니다. 코드가 후보를 만들고 Zoro-1이 그중 하나를 고릅니다. 확률이 0.7 미만이면 실행하지 않고 새 관측 뒤에 다시 묻습니다. 전환은 점검 결과가 코드 기준으로도 충분할 때만 실행합니다.</p>
+    <div class="logbox"><table id="next"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>정상 사용자 요청 기록</h2>
+    <p class="sub">막대 하나가 요청 한 건입니다. 길이는 응답을 기다린 시간이고, 위로 쌓인 높이는 동시에 기다리던 요청 수입니다.</p>
+    <div class="bar" id="controls">
+      <button id="play" type="button">재생</button>
+      <input id="scrub" type="range" step="0.05" aria-label="재생 위치">
+      <span class="now num" id="now"></span>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--good)"></i>✓ 성공</span>
+      <span><i style="background:var(--critical)"></i>✕ 실패 (오류 응답)</span>
+      <span><i style="background:var(--serious)"></i>⏱ 타임아웃 (2초 안에 응답 없음)</span>
+      <span><i style="background:var(--muted)"></i>… 응답 대기 중</span>
+    </div>
+    <div class="scroll"><svg id="chart" role="img" aria-label="경로별 요청 기록"></svg></div>
+  </section>
+
+  <section class="card" id="measureCard">
+    <h2>두 경로의 조치 전후</h2>
+    <p class="sub">조치 후 값은 조치가 끝난 뒤 시작한 요청만 센 것으로, 에이전트가 마지막 검증에 쓴 집계입니다. 상태 표시는 화면이 측정값으로 계산한 것이고, 모델 판정은 아래 판정 기록에 있습니다.</p>
+    <div class="scroll"><table id="measure"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>판정 기록</h2>
+    <p class="sub">Zoro-1이 진단과 검증을 판정하고, 조치 순서와 횟수는 코드 정책이 정합니다. 모델 판정은 측정값 기준 판정과 같을 때만 받아들이고, 다르면 보류합니다. 확률 막대의 세로선은 기준 0.7입니다.</p>
+    <div class="trail" id="trail"></div>
+    <div class="logbox"><table id="log"></table></div>
+  </section>
+
+  <footer id="foot"></footer>
+</main>
+<div id="tip"></div>
+
+<script>
+const FAULT = {app_down: '앱 다운', slow: '지연', source_flood: '요청 폭주', normal: '정상', unknown: '판단 불가'};
+const VERDICT = {recovered: '복구', not_recovered: '미복구', insufficient_data: '관측 부족'};
+const RESULT = {success: '성공', failed: '실패', timeout: '타임아웃'};
+const ACTION = {restart_app: '앱 재시작', limit_top_source: '출발지 제한', switch_to_standby: '예비 앱 전환'};
+const KIND = {not_recovered: '미복구', disagreement: '판정 불일치', undetermined: '판정 미확정', no_action: '자동 조치 없음', action_failed: '조치 명령 실패'};
+const $ = id => document.getElementById(id);
+const sec = (t, sign = true) => (sign && t >= 0 ? '+' : '') + t.toFixed(1) + '초';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const name = (map, k) => map[k] || esc(k);                      // 모르는 값은 이스케이프해서 그대로 보여 준다
+const said = v => name(v.phase === 'diagnosis' ? FAULT : VERDICT, v.label);
+const ruled = v => name(v.phase === 'diagnosis' ? FAULT : VERDICT, v.rule);
+const prob = v => v.p === null ? '(규칙 대체)' : v.p.toFixed(2);
+const judge = v => v.by === 'zoro' ? 'Zoro-1' : '규칙 (모델 호출 실패)';
+const operatorToken = new URLSearchParams(location.search).get('operator');
+
+let mode = 'replay', replay, picked = 0, base, inc, T = 0, timer = null, poll = null, tokenRequired = false, ackError = '';
+const live = () => mode === 'live';
+const mark = key => inc.milestones.find(m => m.key === key);
+const act = () => inc.action ? name(ACTION, inc.last_action || inc.action.name) : '자동 조치';   // 마지막으로 끝난 조치
+const baseOf = p => (inc.baseline || base || {})[p.key + '_path_p95_ms'];
+const setHtml = (el, html) => { if (el._html !== html) { el._html = html; el.innerHTML = html; } };   // 같으면 다시 그리지 않는다
+
+// ---- 측정값 요약. 화면이 계산한다: 성공률 90% 미만이거나 평소보다 훨씬 느리면 "문제", 끝난 요청이 없으면 판단하지 않는다 ----
+function summarize(m, baseP95) {
+  if (!m) return null;
+  const n = m.success + m.failed + m.timeout;
+  if (!n) return {...m, n, rate: null, bad: false, unknown: true};
+  const rate = m.success / n;
+  return {...m, n, rate, unknown: false, bad: rate < 0.9 || m.p95 > Math.max(3 * baseP95, baseP95 + 50)};
+}
+function afterAt(p, t) {      // 재생 중: 조치가 끝난 뒤 시작한 요청을 그 시점까지만 집계
+  const from = inc.action.counted_from;
+  const mine = inc.requests.filter(r => r.p === p.key && r.s >= from && r.s <= t);
+  const done = mine.filter(r => r.e !== null && r.e <= t), ms = done.map(r => r.ms).sort((a, b) => a - b);
+  const count = k => done.filter(r => r.r === k).length;
+  return {success: count('success'), failed: count('failed'), timeout: count('timeout'), in_flight: mine.length - done.length,
+          p95: ms.length ? Math.round(ms[Math.min(ms.length - 1, Math.floor(0.95 * ms.length))] * 10) / 10 : null};
+}
+const stats = x => `끝난 요청 ${x.s.n}건 중 성공 ${x.s.success}건, 타임아웃 ${x.s.timeout}건, 실패 ${x.s.failed}건, 응답 대기 ${x.s.in_flight}건, p95 ${x.s.p95 === null ? '-' : x.s.p95 + 'ms'}`;
+
+function renderOutcome() {
+  const el = $('outcome'), o = esc(inc.origin_label);
+  let cls = 'card outcome', html;
+  if (inc.outcome === 'idle') {
+    const v = inc.verdicts[inc.verdicts.length - 1];
+    html = `<div class="head"><span class="verdict">감시 중</span><span class="when">열린 사건 없음</span></div>
+      <p>${v ? `최근 진단: ${said(v)} ${prob(v)} (${judge(v)}), 측정값 기준 ${ruled(v)}.` : '아직 판정 기록이 없습니다.'} 사건은 모델 판정과 측정값이 모두 이상일 때만 열립니다.</p>`;
+  } else if (T < inc.end || inc.outcome === 'open') {       // 진행 중
+    let now = '정상 감시 중';
+    const checks = inc.verdicts.filter(v => v.phase === 'verification' && v.at <= T), c = checks[checks.length - 1];
+    const opened = mark('incident'), first = mark('suspect');
+    if (inc.action && inc.action.done !== null && T >= inc.action.done)
+      now = '조치 후 검증 중' + (c ? ` · 최근 판정 ${said(c)}${c.conflict ? ' (측정값과 달라 보류)' : ''} (판정 당시 끝난 요청 ${c.completed}건, 대기 ${c.in_flight}건)` : '');
+    else if (opened && T >= opened.at) now = `사건 시작 · ${inc.action ? act() + ' 실행 중' : '조치 확인 중'}`;
+    else if (first && T >= first.at) now = `이상 판정 (${name(FAULT, inc.fault)}) · 새 요청으로 한 번 더 확인 중`;
+    else if (inc.origin_label === '주입' && T >= 0) now = '장애가 주입됨 · 아직 이상 판정 없음';
+    html = `<div class="head"><span class="verdict">${esc(now)}</span><span class="when num">${o} 후 ${sec(T)}</span></div>`;
+  } else {
+    const hasAfter = inc.paths.some(p => p.after);
+    const meas = inc.paths.map(p => ({p, s: summarize(p.after || p.before, baseOf(p))})).filter(x => x.s);
+    const checks = inc.verdicts.filter(v => v.phase === 'verification'), last = checks[checks.length - 1];
+    const basis = last ? `마지막 검증 판정: ${said(last)} ${prob(last)} (${judge(last)}), 측정값 기준 ${ruled(last)}.` : '';
+    const line = x => `<b>${esc(x.p.name)}</b>: ${hasAfter ? act() + ' 후' : '감지 당시'} ${stats(x)}`;
+    const measured = meas.length ? meas.map(line).join('<br>') : '측정 기록 없음';
+    let tail = '';
+    if (inc.ack && T >= inc.ack.at) tail += ' · 담당자 인수됨';
+    if (inc.resumed && T >= inc.resumed.at) tail += ' · 측정값 정상화, 새 사건 감시 재개';
+    if (inc.outcome === 'resolved') {
+      cls += ' resolved';
+      const total = meas.reduce((a, x) => a + x.s.n, 0), ok = meas.reduce((a, x) => a + x.s.success, 0);
+      html = `<div class="head"><span class="verdict">✓ 복구 확인</span><span class="when num">${o} 후 ${sec(inc.end)}</span></div>
+        <p>${act()} 뒤에 시작해 끝난 정상 사용자 요청 ${total}건 중 ${ok}건이 성공했습니다. ${meas.map(x => `${esc(x.p.name)} p95 ${x.s.p95}ms (평소 ${baseOf(x.p)}ms)`).join(', ')}. ${basis}
+        사람의 개입 없이 사건을 닫았습니다.</p>`;
+    } else {
+      cls += ' escalated';
+      const kind = inc.kind || 'not_recovered';   // 실제 이관 사유
+      const bad = meas.filter(x => x.s.bad), good = meas.filter(x => !x.s.bad && !x.s.unknown);
+      const names = bad.map(x => esc(x.p.name)).join(', ');
+      let one = inc.action ? {k: '1. 조치는 실행됐습니다', t: `${act()} 완료 (${sec(inc.action.done)})`, d: esc(inc.action.result)}
+                           : {k: '1. 자동 조치를 하지 않았습니다', t: '실행한 조치 없음', d: ''};
+      let head, lead, two, three, scope;
+      if (kind === 'disagreement') {
+        head = '⚠ 당직자 확인 필요 · 판정 불일치';
+        lead = '조치 후 모델 판정과 측정값이 제한 시간 동안 일치하지 않았습니다. 복구로도 미복구로도 확정하지 않고 사람에게 넘겼습니다.';
+        two = {k: '2. 모델 판정과 측정값이 다릅니다', t: last ? `모델 ${said(last)} ${prob(last)} · 측정값 ${ruled(last)}` : '검증 판정 없음',
+               d: `${measured}<br>검증 ${checks.length}회 중 ${checks.filter(v => v.conflict).length}회 불일치`};
+        three = {k: '3. 자동으로 결론 내리지 않았습니다', t: '판정 불일치로 이관',
+                 d: '모델 판정은 측정값과 같을 때만 받아들입니다. 어느 쪽이 맞는지는 사람이 확인해야 합니다.'};
+        scope = `${act()} 후 측정값은 ${names ? names + '에 문제가 남아 있습니다' : '문제를 보이지 않습니다'}. 모델의 마지막 판정은 ${last ? said(last) : '없음'}이었습니다.`;
+      } else if (kind === 'undetermined') {
+        head = '⚠ 당직자 확인 필요 · 판정 미확정';
+        lead = '조치 후 제한 시간 안에 복구 여부를 확정하지 못해 사람에게 넘겼습니다.';
+        two = {k: '2. 복구 여부를 확정하지 못했습니다', t: last ? `마지막 판정: ${said(last)} ${prob(last)}` : '검증 판정 없음', d: measured};
+        three = {k: '3. 자동으로 결론 내리지 않았습니다', t: '제한 시간 초과로 이관', d: esc(inc.reason || '')};
+        scope = '제한 시간 안에 같은 판정이 두 번 이어지지 않았습니다.';
+      } else if (kind === 'no_action') {
+        head = '⚠ 당직자 인계 필요 · 자동 조치 없음';
+        lead = '이상을 감지했지만 지금 실행할 수 있는 허용 조치가 없어 바로 사람에게 넘겼습니다.';
+        two = {k: '2. 감지 당시 관측', t: `${name(FAULT, inc.fault)} 진단`, d: measured};
+        three = {k: '3. 실행할 수 있는 허용 조치가 없습니다', t: esc(inc.reason || ''), d: '조치 여부는 사람이 판단해야 합니다.'};
+        scope = '감지 당시의 관측만 있습니다.';
+      } else if (kind === 'action_failed') {
+        head = '⚠ 당직자 인계 필요 · 조치 명령 실패';
+        lead = '자동 조치 명령이 실패해, 복구 여부를 묻지 않고 바로 사람에게 넘겼습니다.';
+        one = {k: '1. 조치 명령이 실패했습니다', t: `${act()} 실패`, d: esc(inc.action ? inc.action.result : '')};
+        two = {k: '2. 감지 당시 관측', t: `${name(FAULT, inc.fault)} 진단`, d: measured};
+        three = {k: '3. 조치 후 검증을 하지 않았습니다', t: '조치 명령 실패로 이관', d: '명령이 실패했으므로 조치 후 상태를 판정하지 않았습니다.'};
+        scope = hasAfter ? '' : '감지 당시의 관측만 있습니다.';
+      } else {
+        head = '⚠ 당직자 인계 필요 · 미복구';
+        lead = '자동 조치를 했지만 사용자 요청이 회복되지 않았고, 더 시도할 허용 조치가 없습니다.';
+        two = {k: '2. 사용자 요청은 회복되지 않았습니다', t: `${names || '일부 경로'} 미복구`,
+               d: bad.map(line).join('<br>') + (good.length ? '<br>' + good.map(x => `${esc(x.p.name)}는 정상 범위 (${x.s.n}건 중 성공 ${x.s.success}건, p95 ${x.s.p95}ms)`).join(', ') : '')};
+        three = {k: '3. 남은 자동 조치가 없습니다', t: esc(inc.reason || ''),
+                 d: `허용된 조치(${act()} 1회)는 이미 썼습니다. DB 재시작은 자동 허용 목록에 없어 사람이 판단해야 합니다.`};
+        scope = `${act()} 후에도 ${names || '일부 경로'}의 문제가 지속됐습니다.`;
+      }
+      let ack = '';
+      if (live() && inc.ack) ack = `<div class="ack done">✓ 담당자 인수 완료 · 이관 후 ${sec(inc.ack.at - inc.end, false)}</div>`;
+      else if (live()) ack = tokenRequired && !operatorToken
+        ? '<div class="ack"><span>담당자 인수는 담당자용 링크로 연 화면에서만 할 수 있습니다.</span></div>'
+        : `<div class="ack"><button type="button" data-ack="${esc(inc.id)}">담당자 인수</button>
+           <span>누르면 이 사건을 사람이 맡았다고 기록합니다. 에이전트는 이관 뒤로 자동 조치를 하지 않습니다.</span></div>`;
+      const box = x => `<div><div class="k">${x.k}</div><div class="t">${x.t}</div><div class="d">${x.d}</div></div>`;
+      html = `<div class="head"><span class="verdict">${head}</span><span class="when num">${o} 후 ${sec(inc.end)}${tail}</span></div>
+        <p>${lead}</p>
+        <div class="why">${box(one)}${box(two)}${box(three)}</div>
+        <div class="scope">관측으로 말할 수 있는 범위: ${scope} 원인은 이 관측만으로 단정하지 않습니다.</div>${ack}`;
+    }
+  }
+  el.className = cls;
+  setHtml(el, html);
+}
+
+function renderSteps() {
+  $('steps').hidden = $('basis').hidden = inc.outcome === 'idle';
+  $('basis').textContent = inc.time_basis === 'estimated'
+    ? '판정 시각(첫 이상 판정, 사건 시작, 복구 확인·이관)은 추정값입니다. 이 기록에는 관측 시각만 남아 있어, 그때의 모델 호출 시간을 더해 계산했습니다. 조치 완료 시각은 기록된 값입니다.'
+    : '판정 시각은 에이전트가 판정을 남긴 때를 직접 기록한 값입니다 (모델 호출이 끝난 뒤).';
+  const first = inc.origin_label === '주입'
+    ? [{n: '', label: '장애 주입', at: 0, detail: inc.injected + ' (' + inc.injected_at + ')', zero: true}] : [];
+  const steps = first.concat(inc.milestones.map((m, i) => ({n: i + 1, ...m})));
+  $('steps').style.gridTemplateColumns = `repeat(${steps.length || 1}, 1fr)`;
+  setHtml($('steps'), steps.map(s => {
+    const later = s.at > T;    // 아직 일어나지 않은 단계는 시각과 내용을 보여 주지 않는다
+    return `<div class="step ${later ? 'later' : ''}">
+      <div>${s.n ? `<span class="n">${s.n}</span>` : ''}<span class="l">${later ? '다음 단계' : esc(s.label)}</span></div>
+      <div class="s num">${later ? '—' : s.zero ? '0.0초' : sec(s.at) + ` <small>${esc(inc.origin_label)} 후</small>`}</div>
+      <div class="d">${later ? '' : esc(s.detail)}</div></div>`;
+  }).join(''));
+}
+
+// ---- 요청 기록 그림 ----
+function packRows(reqs, hi) {           // 겹치는 요청을 위로 쌓는다 (재생 위치와 무관하게 고정)
+  const ends = [];
+  return reqs.slice().sort((a, b) => a.s - b.s).map(r => {
+    const e = r.e === null ? hi : r.e;
+    let row = ends.findIndex(x => x <= r.s);
+    if (row < 0) row = ends.length;
+    ends[row] = Math.max(e, r.s + 0.12);
+    return {...r, row};
+  });
+}
+
+function renderChart() {
+  const [lo, hi] = inc.range, W = 1000, L = 118, R = 14, top = 46, rowH = 6, gap = 2;
+  const x = t => L + (t - lo) / (hi - lo) * (W - L - R);
+  let y = top, out = '', lanes = [];
+  for (const p of inc.paths) {
+    const rows = packRows(inc.requests.filter(r => r.p === p.key), hi);
+    const h = Math.max(4, Math.max(0, ...rows.map(r => r.row)) + 1) * (rowH + gap) + 10;
+    lanes.push({p, rows, y, h});
+    y += h + 12;
+  }
+  const H = y + 22;
+  for (let t = Math.ceil(lo / 2) * 2; t <= hi; t += 2)
+    out += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top - 4}" y2="${y - 8}"/><text x="${x(t)}" y="${y + 8}" text-anchor="middle">${t > 0 ? '+' : ''}${t}</text>`;
+  out += `<text x="${W - R}" y="${H - 2}" text-anchor="end">${esc(inc.axis_label || inc.origin_label + ' 후 초')}</text>`;
+  if (inc.action && T >= inc.action.start) {
+    const x0 = x(inc.action.start), done = inc.action.done === null ? T : inc.action.done;
+    out += `<rect x="${x0}" y="${top - 4}" width="${Math.max(1, x(Math.min(done, T)) - x0)}" height="${y - top - 4}" fill="var(--band)"/>
+            <text x="${(x0 + x(done)) / 2}" y="${top - 28}" text-anchor="middle">${act()} 중</text>`;
+  }
+  for (const {p, rows, y: ly, h} of lanes) {
+    out += `<text class="lane-name" x="0" y="${ly + 14}">${esc(p.name)}</text><text x="0" y="${ly + 30}">평소 p95 ${esc(baseOf(p))}ms</text>
+            <line class="grid" x1="${L}" x2="${W - R}" y1="${ly + h}" y2="${ly + h}"/>`;
+    for (const r of rows) {
+      if (r.s > T) continue;
+      const flying = r.e === null || r.e > T, e = flying ? T : r.e;
+      const kind = flying ? 'flying' : RESULT[r.r] ? r.r : 'flying';            // 아는 결과만 색 이름으로 쓴다
+      const tip = `${p.name} · ${flying ? '응답 대기 중' : name(RESULT, r.r)} · ${sec(r.s)} 시작` + (flying ? '' : ` · ${Math.round(r.ms)}ms`);
+      out += `<rect class="req ${kind}" data-tip="${esc(tip)}" x="${x(r.s)}" y="${ly + h - 6 - (r.row + 1) * (rowH + gap)}"
+                width="${Math.max(3, x(e) - x(r.s))}" height="${rowH}" rx="2"/>`;
+    }
+  }
+  if (inc.origin_label === '주입')
+    out += `<line class="inject" x1="${x(0)}" x2="${x(0)}" y1="${top - 4}" y2="${y - 8}"/><text x="${x(0) - 5}" y="${top - 6}" text-anchor="end">주입</text>`;
+  inc.milestones.forEach((m, i) => {
+    if (m.at > T) return;
+    out += `<line class="mark" x1="${x(m.at)}" x2="${x(m.at)}" y1="${top - 2}" y2="${y - 8}"/>
+            <circle cx="${x(m.at)}" cy="${top - 10}" r="8.5" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
+            <text x="${x(m.at)}" y="${top - 6}" text-anchor="middle" style="fill:var(--ink);font-weight:700;font-size:11px">${i + 1}</text>`;
+  });
+  if (T < hi) out += `<line class="cursor" x1="${x(T)}" x2="${x(T)}" y1="${top - 4}" y2="${y - 8}"/>` +
+    (live() ? `<text x="${x(T) + 4}" y="${top + 6}">지금</text>` : '');
+  const svg = $('chart');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = out;
+}
+
+function renderMeasure() {
+  $('measureCard').hidden = inc.outcome === 'idle';
+  if (inc.outcome === 'idle') return;
+  const cell = (s, wait) => !s ? `<span class="dim">${wait}</span>` :
+    `<div class="state ${s.unknown ? '' : s.bad ? 'bad' : 'ok'}">${s.unknown ? '– 판단 불가 (끝난 요청 없음)' : s.bad ? '✕ 문제' : '✓ 정상 범위'}</div>
+     <div class="rate num">${s.n ? Math.round(s.rate * 100) + '%' : '-'} <span class="dim" style="font-size:12px;font-weight:400">성공률</span></div>
+     <div class="dim num">끝난 요청 ${s.n}건: 성공 ${s.success}, 실패 ${s.failed}, 타임아웃 ${s.timeout}<br>응답 대기 ${s.in_flight}건 · p95 ${s.p95 === null ? '-' : s.p95 + 'ms'}</div>`;
+  const opened = mark('incident'), done = inc.action && inc.action.done !== null && inc.action.counted_from !== null;
+  const final = live() || T >= inc.end, running = !final && done && T >= inc.action.done;   // 재생 중에는 그 시점까지만
+  const after = p => final ? p.after : running ? afterAt(p, T) : null;
+  setHtml($('measure'), `<tr><th>경로</th><th>평소 p95</th><th>감지 당시 (사건을 연 5초 창)</th><th>조치 후 (${act()} 뒤 시작한 요청${running ? ', 지금까지' : ''})</th></tr>` +
+    inc.paths.map(p => `<tr><td><b>${esc(p.name)}</b></td><td class="num">${esc(baseOf(p))}ms</td>
+      <td>${cell(live() || !opened || T >= opened.at ? summarize(p.before, baseOf(p)) : null, p.before ? '아직 사건 전' : '기록 없음')}</td>
+      <td>${cell(summarize(after(p), baseOf(p)), final ? '조치 후 기록 없음' : '아직 조치 전')}</td></tr>`).join(''));
+}
+
+function renderNext() {
+  const rows = (inc.next_steps || []).filter(s => live() || s.at <= T);
+  $('nextCard').hidden = !rows.length;
+  if (!rows.length) return;
+  const did = {probe_standby: '예비 앱에 주문 조회 전송', switch_to_standby: '트래픽 전환 실행', escalate: '담당자 이관', hold: '보류: 새 관측 뒤 다시 판정'};
+  setHtml($('next'), `<tr><th>${esc(inc.origin_label)} 후</th><th>모델에 준 관측</th><th>후보</th><th>Zoro-1 선택</th><th>확률</th><th>실행</th></tr>` +
+    rows.map(s => s.kind === 'probe'
+      ? `<tr class="key"><td class="num">${sec(s.at)}</td><td colspan="5"><b>예비 앱 점검 결과</b>: 주문 조회 ${s.sent}건 중 ${s.ok}건 성공${s.p95 === null ? '' : ', p95 ' + s.p95 + 'ms'} <span class="dim">(에이전트가 예비 앱에 직접 보낸 실제 요청)</span></td></tr>`
+      : `<tr><td class="num">${sec(s.at)}</td><td>${esc(s.seen)}</td><td>${s.candidates.map(esc).join(' / ')}</td>
+          <td><b>${esc(s.choice)}</b>${s.by === 'zoro' ? '' : ' <span class="dim">(모델 호출 실패, 규칙으로 대체)</span>'}</td>
+          <td class="num" title="${esc(s.probs.map(x => x[0] + ' ' + x[1].toFixed(2)).join(', '))}">${s.p === null ? '-' : `<span class="p"><b style="width:${s.p * 100}%"></b><u></u></span>${s.p.toFixed(2)}`}</td>
+          <td>${did[s.decision] || esc(s.decision)}</td></tr>`).join(''));
+}
+
+function renderLog() {
+  const shown = live() ? inc.verdicts.slice().reverse() : inc.verdicts.filter(v => v.at <= T);   // 재생은 그 시점까지만, 실시간은 최근 것이 위
+  setHtml($('log'), `<tr><th>${inc.origin_label === '현재' ? '현재 기준' : esc(inc.origin_label) + ' 후'}</th><th>단계</th><th>판정</th><th>확률</th><th>측정값 기준 판정 (규칙)</th><th>호출 시간</th></tr>` +
+    shown.map(v => `<tr class="${v.mark ? 'key' : ''}">
+      <td class="num">${sec(v.at)}</td><td>${v.phase === 'diagnosis' ? '진단' : '검증'}</td><td><b>${said(v)}</b>${v.by === 'zoro' ? '' : ' <span class="dim">(모델 호출 실패, 규칙으로 대체)</span>'}</td>
+      <td class="num">${v.p === null ? '-' : `<span class="p"><b style="width:${v.p * 100}%"></b><u></u></span>${v.p.toFixed(2)}`}</td>
+      <td>${ruled(v)}${v.conflict ? ' · <b>불일치, 보류</b>' : ''}</td><td class="num">${v.ms ? Math.round(v.ms) + 'ms' : '-'}</td></tr>`).join(''));
+  // 사건 이력 한 줄: 그 시점까지 누가 무엇을 정했는가
+  $('trail').hidden = inc.outcome === 'idle';
+  if (inc.outcome === 'idle') return;
+  const parts = [], opened = mark('incident'), ended = live() ? inc.outcome !== 'open' : T >= inc.end && inc.outcome !== 'open';
+  if (opened && T >= opened.at) {
+    const open = inc.verdicts.filter(v => v.phase === 'diagnosis' && v.mark && v.at <= opened.at + 0.01).pop();
+    parts.push(`<span><b>${open ? judge(open) : ''} 진단</b>${name(FAULT, inc.fault)} ${open ? prob(open) : ''}</span>`);
+  }
+  if (inc.action && T >= inc.action.start)
+    parts.push(`<span><b>정책</b>${act()} (허용 1회 중 1회 사용)${inc.action.ok === false ? ' · 명령 실패' : ''}</span>`);
+  const last = inc.verdicts.filter(v => v.phase === 'verification' && v.at <= T).pop();
+  if (last) parts.push(`<span><b>${judge(last)} 검증${ended ? '' : ' (진행 중)'}</b>${said(last)} ${prob(last)}` +
+    (last.conflict ? ` · 측정값은 ${ruled(last)}` : '') + '</span>');
+  if (ended && inc.outcome === 'resolved') parts.push('<span><b>정책</b>사건 닫음</span>');
+  if (ended && inc.outcome === 'escalated') parts.push(`<span><b>정책</b>${name(KIND, inc.kind || 'not_recovered')}: ${esc(inc.reason || '')} → 당직자 이관</span>`);
+  const late = (inc.alerts || []).map(a => ({at: a.at, html: `<span><b>경보</b>다른 장애 감지: ${name(FAULT, a.fault)} (자동 조치 없음)</span>`}));
+  if (inc.resumed) late.push({at: inc.resumed.at, html: '<span><b>정책</b>측정값 정상화 → 새 사건 감시 재개</span>'});
+  if (inc.ack) late.push({at: inc.ack.at, html: '<span><b>사람</b>담당자 인수</span>'});
+  late.sort((a, b) => a.at - b.at).filter(x => T >= x.at).forEach(x => parts.push(x.html));
+  setHtml($('trail'), parts.join('<em>→</em>') || '<em>아직 사건 전</em>');
+}
+
+function renderFaults() {     // 이 사건이 계속되는 중에 감지된 다른 유형의 장애. 이관 카드와 인수 버튼 위에 따로 둔다
+  const seen = inc.outcome === 'idle' ? [] : (inc.alerts || []).filter(a => a.at <= T);
+  $('faults').hidden = !seen.length;
+  setHtml($('faults'), seen.map(a => `<div><b>⚠ 경보: 다른 장애 감지 · ${name(FAULT, a.fault)}</b>
+    <span class="num dim">${esc(inc.origin_label)} 후 ${sec(a.at)}</span><br>
+    이관한 사건(${name(FAULT, inc.fault)})이 계속되는 중에 다른 유형의 장애가 확인됐습니다. 자동 조치는 실행하지 않았습니다. 사람이 확인해야 합니다.</div>`).join(''));
+}
+function renderWaiting(list) {   // 화면에 떠 있는 사건 말고, 아직 인수하지 않은 이관 사건
+  $('waiting').hidden = !live() || !list.length;
+  if (!live()) return;
+  const canAck = !(tokenRequired && !operatorToken);
+  setHtml($('waiting'), `<h2>아직 인수하지 않은 이관 사건</h2>
+    <p class="sub">새 사건이 화면에 떠 있어도 이전 이관 사건은 인수할 때까지 여기에 남습니다.</p>
+    <div class="scroll"><table><tr><th>사건</th><th>진단</th><th>이관 사유</th><th>이관 시각</th><th>지금 상태</th><th></th></tr>` +
+    list.map(x => `<tr><td class="num">${esc(x.id)}</td><td>${name(FAULT, x.fault)}</td><td>${name(KIND, x.kind)}: ${esc(x.reason)}</td>
+      <td class="num">${esc(x.escalated_at)}</td><td>${x.resumed ? '측정값 정상화, 감시 재개됨' : '이관 상태 지속'}</td>
+      <td>${canAck ? `<button type="button" data-ack="${esc(x.id)}">담당자 인수</button>` : '담당자용 링크 필요'}</td></tr>`).join('') + '</table></div>');
+}
+
+function renderAll() {
+  if (!live()) {
+    $('scrub').value = T;
+    $('now').textContent = `${inc.origin_label} 후 ${sec(T)}` + (T >= inc.range[1] ? ' (끝)' : '');
+  }
+  renderFaults(); renderOutcome(); renderSteps(); renderNext(); renderChart(); renderMeasure(); renderLog();
+}
+
+// ---- 기록 재생 ----
+function stop() { clearInterval(timer); timer = null; $('play').textContent = '재생'; }
+function play() {
+  if (timer) return stop();
+  if (T >= inc.range[1]) T = inc.range[0];
+  $('play').textContent = '멈춤';
+  let last = performance.now();
+  timer = setInterval(() => {
+    const now = performance.now();
+    T = Math.min(inc.range[1], T + (now - last) / 1000); last = now;   // 실제 속도 그대로
+    renderAll();
+    if (T >= inc.range[1]) stop();
+  }, 50);
+}
+function select(i) {
+  stop();
+  picked = i; inc = replay.incidents[i]; base = replay.baseline;
+  [...$('picker').children].forEach((b, j) => b.setAttribute('aria-pressed', j === i));
+  $('what').textContent = `${inc.injected_at}에 ${inc.injected}한 실제 실행 · 사건 ${inc.id}`;
+  $('scrub').min = inc.range[0]; $('scrub').max = inc.range[1];
+  T = inc.range[1];
+  renderAll();
+}
+
+// ---- 실시간 ----
+async function tick() {
+  let r;
+  try { r = await (await fetch('/api/live')).json(); } catch (e) { r = null; }
+  if (!live()) return;
+  const warn = [];
+  if (!r) warn.push('화면 서버에 연결할 수 없습니다.');
+  else {
+    if (r.agent_age === null) warn.push('에이전트 기록이 없습니다. agent/agent.py를 실행하세요.');
+    else if (r.agent_age > 5) warn.push(`에이전트 기록이 ${Math.round(r.agent_age)}초째 갱신되지 않습니다.`);
+    if (r.model_down) warn.push('모델 호출 실패: 규칙 판정으로 대체해 계속 감시하고 있습니다.');
+    if (!r.baseline) warn.push('평소 기준이 아직 없습니다.');
+  }
+  if (ackError) warn.push(ackError);
+  $('alert').hidden = !warn.length;
+  $('alert').textContent = warn.join(' ');
+  if (!r || !r.baseline) return;
+  base = r.baseline; inc = r.incident; T = inc.now; tokenRequired = r.operator_token_required;
+  renderWaiting(r.waiting || []);
+  $('modeNote').textContent = `에이전트 기록을 1초마다 읽어 지금 상태를 보여 줍니다. ${r.clock}`;
+  renderAll();
+}
+async function acknowledge(id) {
+  ackError = '';
+  try {
+    const r = await fetch('/api/ack', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                       body: JSON.stringify({incident: id, token: operatorToken})});
+    if (!r.ok) ackError = '담당자 인수를 기록하지 못했습니다: ' + ((await r.json().catch(() => ({}))).error || 'HTTP ' + r.status);
+  } catch (e) { ackError = '담당자 인수를 기록하지 못했습니다: 서버에 연결할 수 없습니다.'; }
+  tick();
+}
+
+function setMode(m) {
+  mode = m; stop(); clearInterval(poll); poll = null; ackError = '';
+  [...$('modeSeg').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.m === m));
+  $('badge').textContent = live() ? '● 실시간' : '기록 재생';
+  $('pickerRow').hidden = $('controls').hidden = live();
+  $('alert').hidden = $('waiting').hidden = true;
+  $('foot').innerHTML = live()
+    ? `실시간 화면입니다. 에이전트 기록과 정상 클라이언트 기록을 1초마다 이어 읽습니다. 시간은 첫 이상 판정으로부터 잽니다 (에이전트는 주입 시각을 모릅니다).`
+    : `기록 재생 화면입니다. 출처: ${replay.sources.map(esc).join(', ')}. 주입 시각은 호스트가 주입 명령을 내리기 직전 시각이고 나머지는 컨테이너 시계 기준이라 0.1초쯤 차이가 날 수 있습니다.`;
+  if (live()) { $('modeNote').textContent = '에이전트 기록을 1초마다 읽어 지금 상태를 보여 줍니다.'; tick(); poll = setInterval(tick, 1000); }
+  else { $('modeNote').textContent = `${replay.recorded_on}에 기록한 실제 실행을 다시 보여 줍니다. 실시간 화면이 아닙니다.`; select(picked); }
+}
+
+async function init() {
+  replay = await (await fetch('data/replay.json')).json();
+  $('picker').innerHTML = replay.incidents.map((x, i) => `<button type="button" data-i="${i}">${esc(x.title)}</button>`).join('');
+  $('picker').onclick = e => e.target.dataset.i && select(+e.target.dataset.i);
+  $('modeSeg').onclick = e => e.target.dataset.m && setMode(e.target.dataset.m);
+  document.addEventListener('click', e => e.target.dataset && e.target.dataset.ack && acknowledge(e.target.dataset.ack));
+  $('play').onclick = play;
+  $('scrub').oninput = e => { stop(); T = +e.target.value; if (inc.range[1] - T < 0.05) T = inc.range[1]; renderAll(); };
+  const tip = $('tip');
+  $('chart').addEventListener('mousemove', e => {
+    const t = e.target.dataset && e.target.dataset.tip;
+    tip.style.display = t ? 'block' : 'none';
+    if (t) { tip.textContent = t; tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY + 12 + 'px'; }
+  });
+  $('chart').addEventListener('mouseleave', () => tip.style.display = 'none');
+  try { $('modeSeg').hidden = !(await fetch('/api/live')).ok; } catch (e) { /* 정적 호스팅: 재생만 */ }
+  picked = location.hash === '#db_delay' ? 1 : 0;
+  setMode(location.hash === '#live' && !$('modeSeg').hidden ? 'live' : 'replay');
+}
+init();
+</script>
+</body>
+</html>

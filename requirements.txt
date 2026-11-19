@@ -1,0 +1,10 @@
+# 호스트에서 도는 것(에이전트, Zoro-1 서버, 화면 서버, 장애 주입)에 필요한 패키지.
+# 테스트 서비스 쪽 패키지는 services/Dockerfile에 있다.
+# 서버의 NVIDIA 드라이버가 최신 torch보다 오래됐으면 GPU를 못 쓴다 ("driver is too old").
+# 그때는 드라이버에 맞는 빌드를 따로 설치한다. 예: pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+torch
+transformers>=5.2
+huggingface_hub
+safetensors
+accelerate
+pillow
